@@ -29,7 +29,7 @@ JOURNAL = ['signal_id','run_datetime','market_data_date','ticker','sector','sign
            *FEATURES,'source_snapshot','spec_sha256','engine_sha256','entry_date','entry_price','spy_entry_price',
            'entry_observed_at','outcome_status','exit_date','exit_price','spy_exit_price',
            'valuation_entry_price','valuation_spy_entry_price','stock_return','spy_return','excess_return',
-           'outcome_observed_at','outcome_snapshot']
+           'outcome_observed_at','outcome_snapshot','price_source','entry_price_source']
 
 def digest(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def stamp(): return pd.Timestamp.now(tz='UTC')
@@ -58,7 +58,7 @@ def load_ledger(path):
                 records[key]=payload['values'].copy()
             else:
                 if key not in records or records[key]['outcome_status']=='COMPLETE': raise ValueError('Invalid journal transition')
-                allowed=({'entry_date','entry_price','spy_entry_price','entry_observed_at'} if kind=='ENTRY' else
+                allowed=({'entry_date','entry_price','spy_entry_price','entry_observed_at','entry_price_source'} if kind=='ENTRY' else
                          {'outcome_status','exit_date','exit_price','spy_exit_price','valuation_entry_price','valuation_spy_entry_price','stock_return','spy_return','excess_return','outcome_observed_at','outcome_snapshot'} if kind=='COMPLETE' else set())
                 if not allowed or not set(payload['values']).issubset(allowed): raise ValueError('Attempt to rewrite signal features')
                 if kind=='ENTRY' and records[key].get('entry_date'): raise ValueError('Entry already recorded')
@@ -113,7 +113,7 @@ def scan_frames(raws, target, cal, now, sectors):
         if ticker!=config.BENCHMARK: scans.append(row)
     return scans,adjusted,audits
 
-def update_journal(out, scans, adjusted, cal, now, snapshot, retrospective=False):
+def update_journal(out, scans, adjusted, cal, now, snapshot, retrospective=False, price_source='yahoo'):
     ledger=out/'prospective_signal_events.jsonl'
     records,head=load_ledger(ledger);added=completed=0
     for row in scans:
@@ -126,7 +126,8 @@ def update_journal(out, scans, adjusted, cal, now, snapshot, retrospective=False
             if key in records: continue
             values={k:row[k] for k in ['run_datetime','market_data_date','ticker','sector',*FEATURES]}
             values.update({'signal_id':key,'signal_type':version,'record_class':'PROSPECTIVE' if eligible else 'RETROSPECTIVE',
-                           'source_snapshot':snapshot,'spec_sha256':digest(ROOT/'FROZEN_SPECIFICATION.md'),'engine_sha256':digest(__file__),'outcome_status':'PENDING'})
+                           'source_snapshot':snapshot,'spec_sha256':digest(ROOT/'FROZEN_SPECIFICATION.md'),'engine_sha256':digest(__file__),'outcome_status':'PENDING',
+                           'price_source':price_source})
             head=append_event(ledger,head,'SIGNAL',key,values);records[key]=values;added+=1
     benchmark=adjusted.get(config.BENCHMARK)
     for key,r in records.items():
@@ -140,7 +141,7 @@ def update_journal(out, scans, adjusted, cal, now, snapshot, retrospective=False
             return [float(x) for x in values] if all(np.isfinite(x) and x>0 for x in values) else None
         ent=pair(entry);end=pair(exit_)
         if ent is not None and not r.get('entry_date'):
-            values={'entry_date':str(entry.date()),'entry_price':ent[0],'spy_entry_price':ent[1],'entry_observed_at':now.isoformat()}
+            values={'entry_date':str(entry.date()),'entry_price':ent[0],'spy_entry_price':ent[1],'entry_observed_at':now.isoformat(),'entry_price_source':price_source}
             head=append_event(ledger,head,'ENTRY',key,values);r.update(values)
         if ent is not None and end is not None:
             sr=end[0]/ent[0]-1;br=end[1]/ent[1]-1
@@ -158,6 +159,7 @@ def main(argv=None):
     p.add_argument('--output-dir',type=Path,default=ROOT/'output')
     p.add_argument('--fixture-dir',type=Path,help='Offline replay only; always RETROSPECTIVE')
     p.add_argument('--now',help='UTC replay clock; requires --fixture-dir')
+    p.add_argument('--source',choices=['yahoo','moomoo'],default='yahoo',help='Live price source, or the vendor of the bars in --fixture-dir; moomoo uses the hosted Open API after `python -m src.moomoo_login` (see MOOMOO_ADAPTER.md)')
     args=p.parse_args(argv)
     if args.now and not args.fixture_dir: p.error('--now is restricted to offline replay')
     if args.fixture_dir and args.output_dir.resolve()==(ROOT/'output').resolve(): p.error('Offline replay requires a separate --output-dir')
@@ -166,6 +168,7 @@ def main(argv=None):
     try: fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
     except FileExistsError: raise RuntimeError('Another run or interrupted run holds .signal_engine.lock; inspect before recovery')
     os.close(fd)
+    gateway=None
     try:
         initialize(out)
         if not (out/'prospective_signal_events.jsonl').exists() and len(pd.read_csv(out/'prospective_signal_journal.csv')):
@@ -173,16 +176,23 @@ def main(argv=None):
         now=pd.Timestamp(args.now) if args.now else stamp()
         if now.tzinfo is None: raise ValueError('Replay clock must include timezone')
         now=now.tz_convert('UTC');cal=calendar(now);target=latest_closed(cal,now)
+        if not args.fixture_dir and args.source=='moomoo':
+            # Credentials are checked once, before any run artifact exists.
+            from .data_moomoo import connect, history as moomoo_history
+            gateway=connect();gateway.probe()
         run_id=now.strftime('%Y%m%dT%H%M%S')+'_'+uuid.uuid4().hex[:8]
         snapshot=out/'signal_engine_runs'/run_id;snapshot.mkdir(parents=True)
         raws={};errors={}
         if not args.fixture_dir:
+            # yfinance also serves the optional sector lookup, whichever source prices the run.
             import yfinance as yf
             yf.set_tz_cache_location(str(ROOT/'.cache/yfinance'))
         for ticker in [*config.UNIVERSE,config.BENCHMARK]:
             try:
                 if args.fixture_dir:
                     frame=pd.read_csv(args.fixture_dir/f'{ticker}.csv',index_col='Date',parse_dates=True)
+                elif gateway is not None:
+                    frame=moomoo_history(gateway,ticker,config.HISTORY_START,str((target+pd.Timedelta(days=1)).date()))
                 else:
                     frame=yf.Ticker(ticker).history(start=config.HISTORY_START,end=str((target+pd.Timedelta(days=1)).date()),**config.DATA_SETTINGS,raise_errors=True,timeout=20)
                 if frame.empty: raise ValueError('Empty response')
@@ -196,8 +206,10 @@ def main(argv=None):
         atomic_csv(out/'current_signal_scan.csv',scans,SCAN)
         signals=[r for r in scans if r.get('V0') is True]
         atomic_csv(out/'current_signals_only.csv',signals,SCAN)
-        added,completed,records=update_journal(out,scans,adjusted,cal,recorded,str(snapshot.relative_to(out)),bool(args.fixture_dir))
+        price_source=f'fixture:{args.source}' if args.fixture_dir else args.source
+        added,completed,records=update_journal(out,scans,adjusted,cal,recorded,str(snapshot.relative_to(out)),bool(args.fixture_dir),price_source)
         manifest={'run_datetime':recorded.isoformat(),'target_market_date':str(target.date()),'mode':'OFFLINE_RETROSPECTIVE' if args.fixture_dir else 'LIVE',
+                  'price_source':price_source,**({'adapter_sha256':digest(ROOT/'src/data_moomoo.py')} if gateway is not None else {}),
                   'sector_metadata':sector_audit,'calendar_version':xcals.__version__,'errors':errors,'quality':audits,'added_records':added,'completed_records':completed,
                   'source_hashes':{x.name:digest(x) for x in snapshot.glob('*.csv')},'engine_sha256':digest(__file__),'spec_sha256':digest(ROOT/'FROZEN_SPECIFICATION.md')}
         (snapshot/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
@@ -217,6 +229,7 @@ def main(argv=None):
             return 2
         return 0
     finally:
+        if gateway is not None: gateway.close()
         lock.unlink()
 
 if __name__=='__main__': sys.exit(main())

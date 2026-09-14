@@ -1275,3 +1275,13 @@ The public copy had no reference/sectors.csv, reference/data_corrections.json or
 The public export explicitly omits historical vendor literals in FIRST_LIVE_RUN.md, FROZEN_SPECIFICATION.md and RESEARCH_LOG.md. Links to excluded generated charts become explicit omission notes in the public copy; reported numbers are unchanged. Reported research returns, mathematical definitions and all 14 original prompts remain intact; prompts compare byte-for-byte. The private original specification, lock, references and historical results are preserved. Socrates Mode is unchanged and available without market data. Publish only the final export and its manifest, not the private source workspace or generated test outputs.
 
 Clean Python 3.13 environment creation and installation from the public requirements succeeded; pip check reported no broken requirements. Initial restricted ensurepip execution failed; the authorized environment-creation retry succeeded. No dependencies or research parameters were changed. Public release is ready for final owner authorization, with ownership/account decisions outstanding.
+
+## 2026-09-14 — Fork maintenance: optional moomoo price source
+
+Recorded by the fork owner (David Rodriguez, dwrod/ai-treasure-hunt), not by the original author. This entry satisfies constitution rules 11 and 14 for the fork; it does not amend the historical experiment.
+
+Why: viewers who follow the video to a brokerage with paper trading need the engine to read prices from that brokerage's data API rather than an unofficial Yahoo scraper that rate-limits first runs. The requester is the fork owner; the original author has not yet reviewed this change.
+
+What was added: `src/data_moomoo.py` (one forward-adjusted daily-bar request per symbol from the hosted moomoo Open API, returning the frame shape the engine already consumes), `src/moomoo_login.py` (browser login, OAuth 2.1 with PKCE, `quote:read` scope only, broader grants refused), a `--source {yahoo,moomoo}` flag, `price_source`/`entry_price_source` provenance fields on new SIGNAL and ENTRY events, AGENTS.md/CLAUDE.md for coding agents, and the package `cryptography` in a separate `requirements-moomoo.txt` for optional AppKey signing. Yahoo remains the default; frozen formulas, universe, timing and the historical lock are untouched; public-lock hashes were refreshed for README.md, START_HERE.md, SIGNAL_ENGINE.md, RESEARCH_LOG.md and src/run_signal_engine.py.
+
+Evidence: replaying the 2026-09-08 scan on moomoo bars reproduces FIRST_LIVE_RUN membership (V0 NVDA, GS, UNH; V1 GS, UNH). Details and limits in MOOMOO_ADAPTER.md. No live 51-name moomoo run has been executed yet. No strategy claim changes.
