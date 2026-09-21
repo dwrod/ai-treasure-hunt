@@ -76,7 +76,7 @@ A command-line research engine that fetches Yahoo data, validates it, calculates
 - `output/prospective_signal_events.jsonl`: authoritative append-only journal.
 - `output/current_watchlist_top10.csv`: optional monitoring view, generated separately below.
 
-The watchlist orders V1 first, V0-only next, then stocks closest from below to a crossover. Near rows are **NEAR SIGNAL — NOT ACTIVE**, never journal signals. No ranking model is invented. Journal outcomes are appended only after maturity; late or historical records are labeled retrospective. There are no broker connections, orders or automatic trades.
+The watchlist orders V1 first, V0-only next, then stocks closest from below to a crossover. Near rows are **NEAR SIGNAL — NOT ACTIVE**, never journal signals. No ranking model is invented. Journal outcomes are appended only after maturity; late or historical records are labeled retrospective. There are no broker connections, orders or automatic trades; reading prices from a broker's data API with a read-only token is a data source, not a broker connection.
 
 ## How to run it
 
@@ -115,6 +115,18 @@ python -m unittest analysis.test_signal_engine analysis.test_release_integrity
 
 Original Yahoo archives and personal journals are deliberately excluded. Archive-dependent tests skip in a public checkout. The public runtime verifies shipped methodology and public documentary hashes; missing private archives and references do not prevent new scans. Exact reproduction of the published historical numbers requires the original snapshot: fresh Yahoo downloads may have revisions. The historical evaluators are retained for inspection but are archive-dependent and are not a one-command reconstruction promise. Optional historical chart dependencies are in `requirements-research.txt`.
 
+### Optional: moomoo as the price source
+
+This fork can read daily bars from the moomoo Open API instead of Yahoo. It is a price source only: the frozen formulas, universe and timing rules are unchanged, the journal gains two provenance columns recording which source priced each record, and there are still no orders or broker connections.
+
+```sh
+.venv/bin/python -m pip install -r requirements-moomoo.txt
+.venv/bin/python -m src.moomoo_login
+.venv/bin/python -m src.run_signal_engine --source moomoo
+```
+
+The login command opens moomoo's own page in your browser. Approve a grant that includes quote read; Moomoo may add account context or other scopes, which the engine accepts, while the engine itself calls only quote endpoints. The engine keeps its token refreshed and never asks for a password in the terminal. Read [MOOMOO_ADAPTER.md](MOOMOO_ADAPTER.md) for how the adapter works, the credential options for servers, and the check against the first live run. [AGENTS.md](AGENTS.md) tells Codex or Claude Code the same things.
+
 ## Important limitations
 
 Fixed hand-selected universe; one recent year; overlapping outcomes; retrospective vendor revisions; static sectors; one documented KO correction; idealized adjusted opening prices without realistic costs, sizing or portfolio construction. Fifty-seven V1 events are not 57 independent trials. This year has already been examined. Future signal logging still needs a prespecified evaluation/inference plan before any promotion decision. **Educational research only; no validated edge.**
@@ -132,6 +144,9 @@ Fixed hand-selected universe; one recent year; overlapping outcomes; retrospecti
 | reference/ | Historical private references are excluded from the public export |
 | data/ / output/ | Local, ignored data, snapshots and personal journals |
 | SOCRATES_MODE.md | One-question-at-a-time interview, research brief and approval gate |
+| MOOMOO_ADAPTER.md | Optional moomoo price source: design, login, limits and acceptance check |
+| src/data_moomoo.py / src/moomoo_login.py | The moomoo adapter and its browser login |
+| AGENTS.md / CLAUDE.md | Instructions for Codex and Claude Code: commands, moomoo login, what never to do |
 | THIRD_PARTY_NOTICES.md | Concept provenance and dependency licensing |
 | PUBLIC_RELEASE_AUDIT.md | Release checks and remaining publication decisions |
 

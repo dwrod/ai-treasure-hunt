@@ -55,7 +55,7 @@ Install Python 3.13. Open a terminal in this project folder and use the Windows 
 
 The engine downloads market data and writes CSV files in output/. A CSV is a plain table you can open in a spreadsheet app. Start with current_signal_scan.csv, checking dates and data_status, then current_signals_only.csv. Run the separate watchlist command if wanted. Read [SIGNAL_ENGINE.md](SIGNAL_ENGINE.md) before relying on journal labels. A missing result is not a failed trade, and a near signal is not active.
 
-Do not delete a journal because the results disappoint. Do not connect the engine to a broker. This is an educational research record, not a validated system for live trading.
+Do not delete a journal because the results disappoint. Do not connect the engine to a broker for orders; reading prices from moomoo is a data source, not a broker connection (see [MOOMOO_ADAPTER.md](MOOMOO_ADAPTER.md)). This is an educational research record, not a validated system for live trading.
 
 ## Change the question, rather than copy the signal
 
