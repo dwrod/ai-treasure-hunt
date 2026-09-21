@@ -89,3 +89,7 @@ The --now clock override is forbidden in live mode. No historical replay is fres
 The public export preserves the historical specification's formulas and settings but explicitly omits its vendor price literals. PUBLIC_RUNTIME_LOCK.json records public file hashes and these documentary exceptions; FROZEN_LOCK.json remains the original historical record, not a claim that omitted data is shipped. The private archive-specific freeze test is excluded; public settings, formula, quarantine, sector-failure and journal tests remain available.
 
 Use `python -m unittest discover -s tests` and `python -m unittest analysis.test_signal_engine analysis.test_release_integrity analysis.test_public_runtime` for public checks. Historical evaluators and report writers require private evidence and are retained for inspection, not turnkey historical reconstruction.
+
+## Price source (fork addition)
+
+`--source moomoo` reads forward-adjusted daily bars from the moomoo Open API instead of Yahoo; formulas, timing and journal rules are unchanged. SIGNAL events written by this version carry `price_source` and ENTRY events carry `entry_price_source` (the one additional permitted ENTRY field); the run manifest carries `price_source` and, for moomoo runs, the adapter's hash. Records written earlier show these columns blank in the journal CSV and were Yahoo. See MOOMOO_ADAPTER.md.

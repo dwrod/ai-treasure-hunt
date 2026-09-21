@@ -1,0 +1,6 @@
+-r requirements-engine.txt
+# Optional price source: moomoo Open API (hosted REST, no local gateway).
+# The frozen engine requirements are unchanged; install this file instead of
+# requirements-engine.txt to enable `python -m src.run_signal_engine --source moomoo`.
+# `requests` is already pinned by the engine; `cryptography` signs AppKey requests.
+cryptography==46.0.3
